@@ -39,7 +39,8 @@ export default function Home() {
           </h2>
           <div className="mx-auto mt-6 h-px w-16 bg-taupe/40" />
           <p className="mt-8 text-base leading-relaxed text-cream-muted">
-            DMC Labs is an independent software studio based in Florida. We design and
+            DMC Labs is an independent software studio based in Sarasota, Florida. We
+            design and
             build consumer applications for families and for everyday life — software
             meant to be genuinely useful, quietly well-made, and respectful of the people
             who use it. We stay small by choice, so we can own each product end to end and

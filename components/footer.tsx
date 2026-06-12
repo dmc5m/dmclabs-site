@@ -5,7 +5,7 @@ export function Footer() {
     <footer className="border-t border-taupe/10">
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-6 py-8 sm:flex-row sm:justify-between sm:px-8">
         <p className="text-xs tracking-wide text-cream-muted">
-          &copy; {new Date().getFullYear()} DMC Labs, LLC &middot; Florida
+          &copy; {new Date().getFullYear()} DMC Labs, LLC &middot; Sarasota, Florida
         </p>
         <nav aria-label="Footer navigation">
           <ul className="flex items-center gap-6">
