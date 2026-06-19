@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Connect your bank · Mizu</title>
+  <!--
+    Static Teller Connect bridge (DE-NETLIFY-PLAN.md, Phase 7).
+
+    Self-contained port of app/connect/native/page.tsx. A plain static page
+    opened by the native iOS app inside ASWebAuthenticationSession. STATELESS —
+    no login, no server-side logic, no secrets. The Teller application id is
+    PUBLIC (it ships in every web bundle) and is hard-coded below.
+
+    HOSTING: served as real text/html from GitHub Pages on the owner's domain:
+      https://www.dmclabs.one/mizu/teller/connect.html
+    This file is the repo source-of-truth; the deployed copy lives in the
+    dmclabs-site repo at public/mizu/teller/connect.html. After editing here,
+    copy it there and push (the dmclabs-site Pages Action redeploys).
+
+    WHY NOT Supabase: the *.supabase.co domain forces public text/html to
+    text/plain + nosniff (both Storage AND Edge Functions), which a WebView
+    renders as source text instead of running the SDK. GitHub Pages serves real
+    text/html, so the bridge has zero Netlify (and zero Supabase) dependency.
+
+    Flow: load the Teller Connect SDK, setup() with the env from the query
+    string, auto-open (+ fallback button), then redirect to
+      <scheme>://teller-callback?accessToken=…&enrollmentId=…
+    (or status=failure / status=cancel) which the auth session captures.
+
+    Query params:
+      scheme        callback URL scheme (default "mizu")
+      env           teller env ("sandbox" | "development" | "production");
+                    native passes it explicitly (no build-time default here)
+      enrollmentId  present -> update/repair mode (reconnect), preserving ids
+  -->
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 32px;
+      text-align: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(to bottom, #eef3fb, #dde7f6);
+      color: #0f172a;
+    }
+    .logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #5b7cfa, #4361ee);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      font-weight: 700;
+      box-shadow: 0 10px 30px -10px rgba(67, 97, 238, 0.6);
+    }
+    #message { font-size: 17px; font-weight: 600; max-width: 320px; }
+    button {
+      font-family: inherit;
+      cursor: pointer;
+    }
+    #connectBtn {
+      padding: 14px 22px;
+      border-radius: 12px;
+      border: none;
+      background: #4361ee;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    #closeBtn {
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      background: transparent;
+      color: #0f172a;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="logo">水</div>
+  <div id="message">Preparing a secure connection…</div>
+  <button id="connectBtn" hidden>Connect your bank</button>
+  <button id="closeBtn" hidden>Close</button>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // PUBLIC Teller application id — ships in every web bundle, not a secret.
+      var TELLER_APP_ID = "app_ppvmhv1gifceiqaqk6000";
+
+      var params = new URLSearchParams(window.location.search);
+
+      // Sanitize the callback scheme (matches the page.tsx regex).
+      var scheme = (params.get("scheme") || "mizu").replace(/[^a-z0-9.+-]/gi, "") || "mizu";
+      var enrollmentId = params.get("enrollmentId") || undefined;
+
+      // Native passes env explicitly; default to sandbox + clamp to the
+      // known set (mirrors normalizeEnv in page.tsx).
+      function normalizeEnv(raw) {
+        var v = (raw || "sandbox").trim();
+        return ["sandbox", "development", "production"].indexOf(v) !== -1 ? v : "sandbox";
+      }
+      var environment = normalizeEnv(params.get("env"));
+
+      var messageEl = document.getElementById("message");
+      var connectBtn = document.getElementById("connectBtn");
+      var closeBtn = document.getElementById("closeBtn");
+
+      var handle = null;
+      var autoOpened = false;
+
+      function setMessage(text) { messageEl.textContent = text; }
+
+      function redirect(query) {
+        window.location.href = scheme + "://teller-callback?" + query;
+      }
+
+      function showError(text) {
+        setMessage(text);
+        connectBtn.hidden = true;
+        closeBtn.hidden = false;
+      }
+
+      closeBtn.addEventListener("click", function () { redirect("status=cancel"); });
+      connectBtn.addEventListener("click", function () { if (handle) handle.open(); });
+
+      var script = document.createElement("script");
+      script.src = "https://cdn.teller.io/connect/connect.js";
+      script.async = true;
+
+      script.onload = function () {
+        var TC = window.TellerConnect;
+        if (!TC) {
+          showError("Couldn't load the bank connection widget.");
+          return;
+        }
+
+        var setup = {
+          applicationId: TELLER_APP_ID,
+          environment: environment,
+          products: ["transactions"],
+          onSuccess: function (enrollment) {
+            redirect(new URLSearchParams({
+              accessToken: enrollment.accessToken,
+              enrollmentId: enrollment.enrollment.id
+            }).toString());
+          },
+          onFailure: function () { redirect("status=failure"); },
+          onExit: function () { redirect("status=cancel"); }
+        };
+        if (enrollmentId) setup.enrollmentId = enrollmentId;
+
+        handle = TC.setup(setup);
+
+        // Ready state: reveal the fallback button.
+        connectBtn.hidden = false;
+
+        // Some webviews block programmatic modal open without a gesture — try
+        // anyway, and leave the button as the fallback.
+        if (!autoOpened) {
+          autoOpened = true;
+          try { handle.open(); } catch (e) { /* fall back to the button */ }
+        }
+      };
+
+      script.onerror = function () {
+        showError("Couldn't reach the bank connection service. Check your connection and try again.");
+      };
+
+      document.head.appendChild(script);
+    })();
+  </script>
+</body>
+</html>
