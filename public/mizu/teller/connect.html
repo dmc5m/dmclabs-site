@@ -111,8 +111,19 @@
 
       // Native passes env explicitly; default to sandbox + clamp to the
       // known set (mirrors normalizeEnv in page.tsx).
+      //
+      // BANDAID (2026-06-26): the native app hard-codes env="production" for
+      // real users, but the Teller app has no production billing set up yet, so
+      // production Connect fails ("your application needs payment setup before
+      // it can be used in production"). Until the REAL fix ships (planned BEFORE
+      // the next App Store update), coerce "production" -> the free "development"
+      // tier (real banks, ~100-enrollment cap) so native bank-connects work.
+      // Web-only (GitHub Pages) — no app build, no App Store review. Sandbox /
+      // reviewer flow is untouched. REMOVE once production billing is configured
+      // (or the native app stops hard-coding "production").
       function normalizeEnv(raw) {
         var v = (raw || "sandbox").trim();
+        if (v === "production") v = "development";
         return ["sandbox", "development", "production"].indexOf(v) !== -1 ? v : "sandbox";
       }
       var environment = normalizeEnv(params.get("env"));
